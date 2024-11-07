@@ -8,4 +8,11 @@ albumentations
 fpdf
 torchvision
 streamlit_drawable_canvas
-ultralytics
+streamlit
+ultralytics==8.0.20  # Replace with the version used during training
+torch==1.13.1        # Ensure compatibility with Ultralytics
+numpy
+pillow
+pydicom
+huggingface_hub
+dill
