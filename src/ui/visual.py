@@ -6,12 +6,15 @@ import os
 import logging
 from src.modulos.gestion_dicom import gestionar_dicom
 from src.modulos.procesamiento_m import procesamiento_masivo
-# Ya no es necesario importar el Detector
-# from src.modulos.deteccion import Detector
+from src.modulos.deteccion import Detector  # Importar el Detector
 
 # Configuración del logger
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
+
+# Inicializar el Detector con el nombre del modelo en Hugging Face
+MODEL_NAME = 'nc7777/detector_lesiones'  # Reemplaza con el nombre de tu repositorio en Hugging Face
+detector = Detector(model_name=MODEL_NAME)
 
 def main():
     # Configurar el título de la página en el navegador
@@ -285,7 +288,7 @@ def main():
         # Establecer directamente la subsección a "Visor DICOM"
         opciones['subseccion'] = "Visor DICOM"  # Establecer directamente sin opciones adicionales
 
-        gestionar_dicom(opciones)  # Ya no pasamos 'detector' como parámetro
+        gestionar_dicom(opciones, detector)  # Pasar 'detector' como parámetro
 
     elif tipo_carga == "Procesamiento Masivo":
         st.sidebar.write("### Opciones para Procesamiento Masivo de Imágenes")
@@ -303,8 +306,6 @@ def main():
         else:
             st.sidebar.info(
                 "Por favor, carga una o más imágenes DICOM, PNG o JPG para realizar el procesamiento masivo.")
-
-    # Hemos eliminado la sección de "Opciones de Detección de Objetos"
 
 if __name__ == "__main__":
     main()
