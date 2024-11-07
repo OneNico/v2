@@ -10,15 +10,11 @@ from pydicom.pixels import apply_voi_lut
 import base64
 
 from src.modulos.procesamiento_i import procesamiento_individual
-from src.modulos.deteccion import Detector  # Importar el Detector
+# El Detector será pasado como parámetro, no es necesario importarlo aquí
 
 logger = logging.getLogger(__name__)
 
-# Inicializar el Detector
-MODEL_NAME = 'nc7777/detector_lesiones'
-detector = Detector(model_name=MODEL_NAME)
-
-def visualizar_dicom(opciones):
+def visualizar_dicom(opciones, detector):
     st.write("---")
     st.header("Visor Avanzado de Imágenes DICOM")
 
@@ -47,9 +43,9 @@ def visualizar_dicom(opciones):
     abrir_visor = st.checkbox("Abrir Visor DICOM")
 
     if abrir_visor:
-        mostrar_visor(selected_file, opciones)
+        mostrar_visor(selected_file, opciones, detector)
 
-def mostrar_visor(selected_file, opciones):
+def mostrar_visor(selected_file, opciones, detector):
     imagen, ds, pixel_spacing = procesar_imagen_dicom(selected_file)
 
     if imagen is not None:
@@ -68,238 +64,27 @@ def mostrar_visor(selected_file, opciones):
         imagen_editada.save(buffered, format="PNG")
         img_base64 = base64.b64encode(buffered.getvalue()).decode()
 
-        # HTML y JavaScript para hacer la imagen draggable, zoom, rotación y reset
-        # Utilizamos f-strings y escapamos las llaves dobles para CSS y JS
-        draggable_image_html = f"""
-        <html>
-        <head>
-        <style>
-            #container {{
-                width: 100%;
-                height:800px; /* Altura ajustada */
-                position: relative;
-                overflow: hidden;
-                border: 1px solid #ddd;
-                background-color: #000; /* Fondo negro para mejor visualización */
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }}
-            #draggable {{
-                position: absolute;
-                cursor: grab;
-                user-select: none;
-                transition: transform 0.1s ease;
-                max-width: none;
-                max-height: none;
-                z-index: 100;
-            }}
-            #controls {{
-                position: absolute;
-                top: 10px;
-                left: 10px;
-                z-index: 1000;
-            }}
-            #controls button {{
-                background-color: #1F4E79;
-                color: white;
-                border: none;
-                padding: 5px 10px;
-                margin-right: 5px;
-                margin-bottom: 5px;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 16px;
-            }}
-            #canvas {{
-                position: absolute;
-                top: 0;
-                left: 0;
-                z-index: 200;
-            }}
-        </style>
-        </head>
-        <body>
-            <div id="container">
-                <div id="controls">
-                    <button onclick="zoomIn()">+</button>
-                    <button onclick="zoomOut()">-</button>
-                    <button onclick="rotateLeft()">⟲</button>
-                    <button onclick="rotateRight()">⟳</button>
-                    <button onclick="resetTransformations()">⎌ Reset</button>
-                </div>
-                <img id="draggable" src="data:image/png;base64,{img_base64}" draggable="false" />
-            </div>
-            <script>
-                const img = document.getElementById("draggable");
-                const container = document.getElementById("container");
-                let isDragging = false;
-                let startX, startY;
-                let translateX = 0, translateY = 0;
-                let scale = 1;
-                let rotation = 0;
-                const imageKey = "{selected_file.name}";  // Clave única para cada imagen
-
-                // Agregar una variable para almacenar las transformaciones iniciales
-                let initialTransformations = {{}};
-
-                // Función para calcular la escala y posición inicial
-                function calculateInitialScale() {{
-                    const containerWidth = container.clientWidth;
-                    const containerHeight = container.clientHeight;
-                    const imgNaturalWidth = img.naturalWidth;
-                    const imgNaturalHeight = img.naturalHeight;
-
-                    const scaleWidth = containerWidth / imgNaturalWidth;
-                    const scaleHeight = containerHeight / imgNaturalHeight;
-                    let initialScale = Math.min(scaleWidth, scaleHeight);
-
-                    // Multiplicar la escala inicial por un factor para agrandar la imagen
-                    initialScale *= 1.2; // Puedes ajustar este valor (1.2) para agrandar más o menos la imagen
-
-                    scale = initialScale;
-
-                    // Centrar la imagen
-                    translateX = (containerWidth - imgNaturalWidth * scale) / 2;
-                    translateY = (containerHeight - imgNaturalHeight * scale) / 2;
-
-                    rotation = 0;
-
-                    // Guardar las transformaciones iniciales
-                    initialTransformations = {{
-                        translateX: translateX,
-                        translateY: translateY,
-                        scale: scale,
-                        rotation: rotation
-                    }};
-                }}
-
-                // Cargar transformaciones desde localStorage
-                function loadTransformations() {{
-                    const savedTransformations = localStorage.getItem('transformations_' + imageKey);
-                    if (savedTransformations) {{
-                        const {{ translateX: tx, translateY: ty, scale: s, rotation: r }} = JSON.parse(savedTransformations);
-                        translateX = tx;
-                        translateY = ty;
-                        scale = s;
-                        rotation = r;
-                    }} else {{
-                        // No hay transformaciones guardadas, calcular escala inicial
-                        calculateInitialScale();
-                    }}
-                }}
-
-                // Guardar transformaciones en localStorage
-                function saveTransformations() {{
-                    const transformations = {{
-                        translateX,
-                        translateY,
-                        scale,
-                        rotation
-                    }};
-                    localStorage.setItem('transformations_' + imageKey, JSON.stringify(transformations));
-                }}
-
-                // Llamar a loadTransformations al cargar la imagen
-                img.onload = () => {{
-                    calculateInitialScale();
-                    loadTransformations();
-                    updateTransform();
-                }};
-
-                img.addEventListener("mousedown", (e) => {{
-                    isDragging = true;
-                    startX = e.clientX - translateX;
-                    startY = e.clientY - translateY;
-                    img.style.cursor = "grabbing";
-                }});
-
-                img.addEventListener("mousemove", (e) => {{
-                    if (isDragging) {{
-                        translateX = e.clientX - startX;
-                        translateY = e.clientY - startY;
-                        updateTransform();
-                    }}
-                }});
-
-                img.addEventListener("mouseup", (e) => {{
-                    if (isDragging) {{
-                        isDragging = false;
-                        img.style.cursor = "grab";
-                    }}
-                }});
-
-                // Asegurar que los eventos funcionen también si el ratón sale de la imagen
-                document.addEventListener("mouseup", (e) => {{
-                    if (isDragging) {{
-                        isDragging = false;
-                        img.style.cursor = "grab";
-                    }}
-                }});
-
-                // Prevenir el comportamiento por defecto de arrastre de la imagen
-                img.addEventListener("dragstart", (e) => {{
-                    e.preventDefault();
-                }});
-
-                function zoomIn() {{
-                    scale += 0.1;
-                    updateTransform();
-                }}
-
-                function zoomOut() {{
-                    scale = Math.max(0.1, scale - 0.1);
-                    updateTransform();
-                }}
-
-                function rotateLeft() {{
-                    rotation -= 15;
-                    updateTransform();
-                }}
-
-                function rotateRight() {{
-                    rotation += 15;
-                    updateTransform();
-                }}
-
-                function resetTransformations() {{
-                    // Restaurar las transformaciones iniciales
-                    translateX = initialTransformations.translateX;
-                    translateY = initialTransformations.translateY;
-                    scale = initialTransformations.scale;
-                    rotation = initialTransformations.rotation;
-
-                    // Eliminar las transformaciones guardadas en localStorage
-                    localStorage.removeItem('transformations_' + imageKey);
-
-                    updateTransform();
-                }}
-
-                function updateTransform() {{
-                    img.style.transform = `translate(${{translateX}}px, ${{translateY}}px) scale(${{scale}}) rotate(${{rotation}}deg)`;
-                    // Guardar las transformaciones
-                    saveTransformations();
-                }}
-            </script>
-        </body>
-        </html>
-        """
+        # HTML y JavaScript para mostrar la imagen (omitido por brevedad)
+        # ... [tu código HTML y JS para mostrar la imagen con zoom y arrastre] ...
 
         # Mostrar la imagen con funcionalidad de arrastre, zoom, rotación y reset
         st.components.v1.html(draggable_image_html, height=800)  # Ajustar la altura a 800
 
         # Opciones de Detección de Objetos
-        st.subheader("Detección de Objetos en la Imagen")
+        if opciones.get('activar_deteccion', False):
+            st.subheader("Detección de Objetos en la Imagen")
 
-        detectar_objetos = st.button("Detectar Objetos", key=f"detectar_{selected_file.name}")
+            detectar_objetos = st.button("Detectar Objetos", key=f"detectar_{selected_file.name}")
 
-        if detectar_objetos:
-            with st.spinner("Realizando detección de objetos..."):
-                imagen_detectada = detector.detectar_objetos(imagen_editada)
-                if imagen_detectada:
-                    st.image(imagen_detectada, caption="Imagen con Detecciones", use_column_width=True)
-                else:
-                    st.error("No se pudo realizar la detección de objetos.")
+            if detectar_objetos:
+                with st.spinner("Realizando detección de objetos..."):
+                    imagen_detectada = detector.detectar_objetos(imagen_editada)
+                    if imagen_detectada:
+                        st.image(imagen_detectada, caption="Imagen con Detecciones", use_column_width=True)
+                    else:
+                        st.error("No se pudo realizar la detección de objetos.")
+        else:
+            st.info("La detección de objetos está desactivada. Actívala en la barra lateral para usar esta función.")
 
         # Descargar DICOM modificado y PNG de alta resolución, y botón "Analizar mamografía"
         st.subheader("Descargar Imagen Modificada")
